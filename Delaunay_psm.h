@@ -3939,7 +3939,7 @@ namespace GEO {
         while(isspace(in.peek())) {
             in.get(c);
         }
-        if(in.peek() == '[') {
+        if(in.peek() == '[' || in.peek() == '{') {
             in.get(c);
         }
         while(isspace(in.peek())) {
@@ -3957,7 +3957,7 @@ namespace GEO {
                 in.get(c);
             }
         }
-        if(in.peek() == ']') {
+        if(in.peek() == ']' || in.peek() == '}') {
             in.get(c);
         }
         return in;
@@ -8162,6 +8162,9 @@ namespace GEO {
 
         ArgType GEOGRAM_API get_arg_type(const std::string& name);
 
+
+	std::string GEOGRAM_API get_arg_desc(const std::string& name);
+
         bool GEOGRAM_API arg_is_declared(const std::string& name);
 
         inline void declare_arg(
@@ -8328,6 +8331,15 @@ namespace GEO {
         void GEOGRAM_API set_arg(const std::string& name, bool value);
 
         void GEOGRAM_API set_arg_percent(const std::string& name, double value);
+
+        
+
+	void GEOGRAM_API get_arg_groups(std::vector<std::string>& groups);
+
+	void GEOGRAM_API get_arg_names_in_group(
+	    const std::string& group,
+	    std::vector<std::string>& arg_names
+	);
 
         
 
@@ -9636,15 +9648,11 @@ namespace GEO {
             return cell_size_;
         }
 
-        virtual void set_vertices(
-            index_t nb_vertices, const double* vertices
-        );
-
+        virtual void set_vertices(index_t nb_vertices, const double* vertices);
 
         void set_reorder(bool x) {
             do_reorder_ = x;
         }
-
 
         virtual void set_BRIO_levels(const vector<index_t>& levels);
 
@@ -9693,23 +9701,23 @@ namespace GEO {
             return nb_finite_cells_;
         }
 
-        const signed_index_t* cell_to_v() const {
+        const index_t* cell_to_v() const {
             return cell_to_v_;
         }
 
-        const signed_index_t* cell_to_cell() const {
+        const index_t* cell_to_cell() const {
             return cell_to_cell_;
         }
 
         virtual index_t nearest_vertex(const double* p) const;
 
-        signed_index_t cell_vertex(index_t c, index_t lv) const {
+        index_t cell_vertex(index_t c, index_t lv) const {
             geo_debug_assert(c < nb_cells());
             geo_debug_assert(lv < cell_size());
             return cell_to_v_[c * cell_v_stride_ + lv];
         }
 
-        signed_index_t cell_adjacent(index_t c, index_t lf) const {
+        index_t cell_adjacent(index_t c, index_t lf) const {
             geo_debug_assert(c < nb_cells());
             geo_debug_assert(lf < cell_size());
             return cell_to_cell_[c * cell_neigh_stride_ + lf];
@@ -9721,9 +9729,9 @@ namespace GEO {
             return !cell_is_infinite(c);
         }
 
-        index_t index(index_t c, signed_index_t v) const {
+        index_t index(index_t c, index_t v) const {
             geo_debug_assert(c < nb_cells());
-            geo_debug_assert(v < (signed_index_t) nb_vertices());
+            geo_debug_assert(v == NO_INDEX || v < nb_vertices());
             for(index_t iv = 0; iv < cell_size(); iv++) {
                 if(cell_vertex(c, iv) == v) {
                     return iv;
@@ -9736,29 +9744,27 @@ namespace GEO {
             geo_debug_assert(c1 < nb_cells());
             geo_debug_assert(c2 < nb_cells());
             for(index_t f = 0; f < cell_size(); f++) {
-                if(cell_adjacent(c1, f) == signed_index_t(c2)) {
+                if(cell_adjacent(c1, f) == c2) {
                     return f;
                 }
             }
             geo_assert_not_reached;
         }
 
-        signed_index_t vertex_cell(index_t v) const {
+        index_t vertex_cell(index_t v) const {
             geo_debug_assert(v < nb_vertices());
             geo_debug_assert(v < v_to_cell_.size());
             return v_to_cell_[v];
         }
 
 
-        signed_index_t next_around_vertex(index_t c, index_t lv) const {
+        index_t next_around_vertex(index_t c, index_t lv) const {
             geo_debug_assert(c < nb_cells());
             geo_debug_assert(lv < cell_size());
             return cicl_[cell_size() * c + lv];
         }
 
-        void get_neighbors(
-            index_t v, vector<index_t>& neighbors
-        ) const {
+        void get_neighbors(index_t v, vector<index_t>& neighbors) const {
             geo_debug_assert(v < nb_vertices());
             if(store_neighbors_) {
                 neighbors_.get_array(v, neighbors);
@@ -9835,7 +9841,7 @@ namespace GEO {
 
         virtual void set_arrays(
             index_t nb_cells,
-            const signed_index_t* cell_to_v, const signed_index_t* cell_to_cell
+            const index_t* cell_to_v, const index_t* cell_to_cell
         );
 
         virtual void update_v_to_cell();
@@ -9850,7 +9856,7 @@ namespace GEO {
             geo_debug_assert(c1 < nb_cells());
             geo_debug_assert(c2 < nb_cells());
             geo_debug_assert(lv < cell_size());
-            cicl_[cell_size() * c1 + lv] = signed_index_t(c2);
+            cicl_[cell_size() * c1 + lv] = c2;
         }
 
     public:
@@ -9874,10 +9880,10 @@ namespace GEO {
         const double* vertices_;
         index_t nb_vertices_;
         index_t nb_cells_;
-        const signed_index_t* cell_to_v_;
-        const signed_index_t* cell_to_cell_;
-        vector<signed_index_t> v_to_cell_;
-        vector<signed_index_t> cicl_;
+        const index_t* cell_to_v_;
+        const index_t* cell_to_cell_;
+        vector<index_t> v_to_cell_;
+        vector<index_t> cicl_;
         bool is_locked_;
         PackedArrays neighbors_;
         bool store_neighbors_;
@@ -9924,9 +9930,7 @@ namespace GEO {
     public:
         Delaunay2d(coord_index_t dimension = 2);
 
-        void set_vertices(
-            index_t nb_vertices, const double* vertices
-        ) override;
+        void set_vertices(index_t nb_vertices, const double* vertices) override;
 
         index_t nearest_vertex(const double* p) const override;
 
@@ -9934,18 +9938,15 @@ namespace GEO {
             return has_empty_cells_;
         }
 
-
         void abort_if_empty_cell(bool x) {
             abort_if_empty_cell_ = x;
         }
 
     protected:
 
-        static constexpr index_t NO_TRIANGLE = index_t(-1);
+        static constexpr index_t NO_TRIANGLE = NO_INDEX;
 
-        bool create_first_triangle(
-            index_t& iv0, index_t& iv1, index_t& iv2
-        );
+        bool create_first_triangle(index_t& iv0, index_t& iv1, index_t& iv2);
 
         index_t locate(
             const double* p, index_t hint = NO_TRIANGLE,
@@ -9954,7 +9955,7 @@ namespace GEO {
         ) const;
 
         index_t locate_inexact(
-            const double* p, index_t hint, index_t max_iter
+	    const double* p, index_t hint, index_t max_iter
         ) const;
 
         index_t insert(index_t v, index_t hint = NO_TRIANGLE);
@@ -9972,25 +9973,24 @@ namespace GEO {
             index_t& first, index_t& last
         );
 
-
         index_t stellate_conflict_zone(
             index_t v,
             index_t t_bndry, index_t e_bndry
         );
 
-        // _________ Combinatorics - new and delete _________________________
+        
 
         index_t max_t() const {
             return cell_to_v_store_.size() / 3;
         }
 
 
-        static constexpr index_t NOT_IN_LIST  = index_t(~0);
+        static constexpr index_t NOT_IN_LIST  = ~index_t(0);
 
-        static constexpr index_t NOT_IN_LIST_BIT = index_t(1u << 31);
+        static constexpr index_t NOT_IN_LIST_BIT =
+	    index_t(1) << (sizeof(index_t)*8-1) ;
 
-        static constexpr index_t END_OF_LIST = ~(NOT_IN_LIST_BIT);
-
+        static constexpr index_t END_OF_LIST = ~NOT_IN_LIST_BIT;
 
         bool triangle_is_in_list(index_t t) const {
             geo_debug_assert(t < max_t());
@@ -10022,13 +10022,13 @@ namespace GEO {
             cell_next_[t] = NOT_IN_LIST;
         }
 
-        static constexpr signed_index_t VERTEX_AT_INFINITY = -1;
+        static constexpr index_t VERTEX_AT_INFINITY = NO_INDEX;
 
         bool triangle_is_finite(index_t t) const {
             return
-                cell_to_v_store_[3 * t]     >= 0 &&
-                cell_to_v_store_[3 * t + 1] >= 0 &&
-                cell_to_v_store_[3 * t + 2] >= 0 ;
+                (cell_to_v_store_[3 * t]     != NO_INDEX) &&
+		(cell_to_v_store_[3 * t + 1] != NO_INDEX) &&
+		(cell_to_v_store_[3 * t + 2] != NO_INDEX) ;
         }
 
         bool triangle_is_real(index_t t) const {
@@ -10051,8 +10051,12 @@ namespace GEO {
         index_t new_triangle() {
             index_t result;
             if(first_free_ == END_OF_LIST) {
-                cell_to_v_store_.resize(cell_to_v_store_.size() + 3, -1);
-                cell_to_cell_store_.resize(cell_to_cell_store_.size() + 3, -1);
+                cell_to_v_store_.resize(
+		    cell_to_v_store_.size() + 3, NO_INDEX
+		);
+                cell_to_cell_store_.resize(
+		    cell_to_cell_store_.size() + 3, NO_INDEX
+		);
                 // index_t(NOT_IN_LIST) is necessary, else with
                 // NOT_IN_LIST alone the compiler tries to generate a
                 // reference to NOT_IN_LIST resulting in a link error.
@@ -10064,17 +10068,14 @@ namespace GEO {
                 remove_triangle_from_list(result);
             }
 
-            cell_to_cell_store_[3 * result] = -1;
-            cell_to_cell_store_[3 * result + 1] = -1;
-            cell_to_cell_store_[3 * result + 2] = -1;
+            cell_to_cell_store_[3 * result] = NO_INDEX;
+            cell_to_cell_store_[3 * result + 1] = NO_INDEX;
+            cell_to_cell_store_[3 * result + 2] = NO_INDEX;
 
             return result;
         }
 
-        index_t new_triangle(
-            signed_index_t v1, signed_index_t v2,
-            signed_index_t v3
-        ) {
+        index_t new_triangle(index_t v1, index_t v2, index_t v3) {
             index_t result = new_triangle();
             cell_to_v_store_[3 * result] = v1;
             cell_to_v_store_[3 * result + 1] = v2;
@@ -10094,7 +10095,7 @@ namespace GEO {
             cell_next_[t] = cur_stamp_;
         }
 
-        // _________ Combinatorics ___________________________________
+        
 
         static index_t triangle_edge_vertex(index_t e, index_t v) {
             geo_debug_assert(e < 3);
@@ -10102,16 +10103,16 @@ namespace GEO {
             return index_t(triangle_edge_vertex_[e][v]);
         }
 
-        signed_index_t triangle_vertex(index_t t, index_t lv) const {
+        index_t triangle_vertex(index_t t, index_t lv) const {
             geo_debug_assert(t < max_t());
             geo_debug_assert(lv < 3);
             return cell_to_v_store_[3 * t + lv];
         }
 
-        index_t find_triangle_vertex(index_t t, signed_index_t v) const {
+        index_t find_triangle_vertex(index_t t, index_t v) const {
             geo_debug_assert(t < max_t());
             //   Find local index of v in triangle t vertices.
-            const signed_index_t* T = &(cell_to_v_store_[3 * t]);
+            const index_t* T = &(cell_to_v_store_[3 * t]);
             return find_3(T,v);
         }
 
@@ -10119,20 +10120,20 @@ namespace GEO {
         index_t finite_triangle_vertex(index_t t, index_t lv) const {
             geo_debug_assert(t < max_t());
             geo_debug_assert(lv < 3);
-            geo_debug_assert(cell_to_v_store_[3 * t + lv] != -1);
-            return index_t(cell_to_v_store_[3 * t + lv]);
+            geo_debug_assert(cell_to_v_store_[3 * t + lv] != NO_INDEX);
+            return cell_to_v_store_[3 * t + lv];
         }
 
-        void set_triangle_vertex(index_t t, index_t lv, signed_index_t v) {
+        void set_triangle_vertex(index_t t, index_t lv, index_t v) {
             geo_debug_assert(t < max_t());
             geo_debug_assert(lv < 3);
             cell_to_v_store_[3 * t + lv] = v;
         }
 
-        signed_index_t triangle_adjacent(index_t t, index_t le) const {
+        index_t triangle_adjacent(index_t t, index_t le) const {
             geo_debug_assert(t < max_t());
             geo_debug_assert(le < 3);
-            signed_index_t result = cell_to_cell_store_[3 * t + le];
+            index_t result = cell_to_cell_store_[3 * t + le];
             return result;
         }
 
@@ -10141,20 +10142,16 @@ namespace GEO {
             geo_debug_assert(t2 < max_t());
             geo_debug_assert(le1 < 3);
             geo_debug_assert(t1 != t2);
-            cell_to_cell_store_[3 * t1 + le1] = signed_index_t(t2);
+            cell_to_cell_store_[3 * t1 + le1] = t2;
         }
 
-        index_t find_triangle_adjacent(
-            index_t t1, index_t t2_in
-        ) const {
+        index_t find_triangle_adjacent(index_t t1, index_t t2) const {
             geo_debug_assert(t1 < max_t());
-            geo_debug_assert(t2_in < max_t());
-            geo_debug_assert(t1 != t2_in);
-
-            signed_index_t t2 = signed_index_t(t2_in);
+            geo_debug_assert(t2 < max_t());
+            geo_debug_assert(t1 != t2);
 
             // Find local index of t2 in triangle t1 adajcent tets.
-            const signed_index_t* T = &(cell_to_cell_store_[3 * t1]);
+            const index_t* T = &(cell_to_cell_store_[3 * t1]);
             index_t result = find_3(T,t2);
 
             // Sanity check: make sure that t1 is adjacent to t2
@@ -10164,32 +10161,29 @@ namespace GEO {
             return result;
         }
 
-
-
-        void set_tet(
+        void set_triangle(
             index_t t,
-            signed_index_t v0, signed_index_t v1,
-            signed_index_t v2,
+            index_t v0, index_t v1, index_t v2,
             index_t a0, index_t a1, index_t a2
         ) {
             geo_debug_assert(t < max_t());
             cell_to_v_store_[3 * t] = v0;
             cell_to_v_store_[3 * t + 1] = v1;
             cell_to_v_store_[3 * t + 2] = v2;
-            cell_to_cell_store_[3 * t] = signed_index_t(a0);
-            cell_to_cell_store_[3 * t + 1] = signed_index_t(a1);
-            cell_to_cell_store_[3 * t + 2] = signed_index_t(a2);
+            cell_to_cell_store_[3 * t] = a0;
+            cell_to_cell_store_[3 * t + 1] = a1;
+            cell_to_cell_store_[3 * t + 2] = a2;
         }
 
-        // _________ Predicates _____________________________________________
+        
 
         bool triangle_is_conflict(index_t t, const double* p) const {
 
             // Lookup triangle vertices
             const double* pv[3];
             for(index_t i=0; i<3; ++i) {
-                signed_index_t v = triangle_vertex(t,i);
-                pv[i] = (v == -1) ? nullptr : vertex_ptr(index_t(v));
+                index_t v = triangle_vertex(t,i);
+                pv[i] = (v == NO_INDEX) ? nullptr : vertex_ptr(v);
             }
 
             // Check for virtual triangles (then in_circle()
@@ -10216,8 +10210,8 @@ namespace GEO {
 
                     // If sign is zero, we check the real triangle
                     // adjacent to the facet on the convex hull.
-                    geo_debug_assert(triangle_adjacent(t, le) >= 0);
-                    index_t t2 = index_t(triangle_adjacent(t, le));
+                    geo_debug_assert(triangle_adjacent(t, le) != NO_INDEX);
+                    index_t t2 = triangle_adjacent(t, le);
                     geo_debug_assert(!triangle_is_virtual(t2));
 
                     //  If t2 is already chained in the conflict list,
@@ -10257,9 +10251,7 @@ namespace GEO {
 
     protected:
 
-        static inline index_t find_3(
-            const signed_index_t* T, signed_index_t v
-        ) {
+        static inline index_t find_3(const index_t* T, index_t v) {
             // The following expression is 10% faster than using
             // if() statements. This uses the C++ norm, that
             // ensures that the 'true' boolean value converted to
@@ -10279,17 +10271,15 @@ namespace GEO {
 
         void show_triangle_adjacent(index_t t, index_t le) const;
 
-        void show_list(
-            index_t first, const std::string& list_name
-        ) const;
+        void show_list(index_t first, const std::string& list_name) const;
 
         void check_combinatorics(bool verbose = false) const;
 
         void check_geometry(bool verbose = false) const;
 
     private:
-        vector<signed_index_t> cell_to_v_store_;
-        vector<signed_index_t> cell_to_cell_store_;
+        vector<index_t> cell_to_v_store_;
+        vector<index_t> cell_to_cell_store_;
         vector<index_t> cell_next_;
         vector<index_t> reorder_;
         index_t cur_stamp_; // used for marking
@@ -10349,14 +10339,6 @@ namespace GEO {
     index_t periodic_vertex_real(index_t pv) const {
         geo_debug_assert(pv < nb_vertices_non_periodic_ * 27);
         return pv % nb_vertices_non_periodic_;
-    }
-
-    signed_index_t periodic_vertex_real(signed_index_t pv) const {
-        geo_debug_assert(
-            pv < signed_index_t(nb_vertices_non_periodic_ * 27)
-        );
-        geo_debug_assert(pv != -1);
-        return pv % signed_index_t(nb_vertices_non_periodic_);
     }
 
     index_t make_periodic_vertex(index_t real, index_t instance) const {
@@ -10753,8 +10735,8 @@ namespace GEO {
         vec3 period_;
 
         const double* weights_;
-        vector<signed_index_t> cell_to_v_store_;
-        vector<signed_index_t> cell_to_cell_store_;
+        vector<index_t> cell_to_v_store_;
+        vector<index_t> cell_to_cell_store_;
         vector<index_t> cell_next_;
 
         CellStatusArray cell_status_;
@@ -10846,9 +10828,7 @@ namespace GEO {
 
     void insert_constraint(index_t i, index_t j);
 
-    void remove_external_triangles(
-        bool remove_internal_holes=false
-    );
+    void remove_external_triangles(bool remove_internal_holes=false);
 
     void set_delaunay(bool delaunay) {
         delaunay_ = delaunay;
@@ -10914,7 +10894,7 @@ namespace GEO {
         index_t result = 0;
         for(
             index_t ecit = Tedge_cnstr_first(t,le);
-            ecit != index_t(-1);
+            ecit != NO_INDEX;
             ecit = edge_cnstr_next(ecit)
         ) {
             ++result;
@@ -10932,7 +10912,7 @@ namespace GEO {
     virtual void commit_insert_transaction();
     virtual void rollback_insert_transaction();
 
-    index_t insert(index_t v, index_t hint = index_t(-1));
+    index_t insert(index_t v, index_t hint = NO_INDEX);
 
     void create_enclosing_triangle(index_t v1, index_t v2, index_t v3);
 
@@ -10981,13 +10961,13 @@ namespace GEO {
     struct DList {
         DList(CDTBase2d& cdt, index_t list_id) :
             cdt_(cdt), list_id_(list_id),
-            back_(index_t(-1)), front_(index_t(-1)) {
+            back_(NO_INDEX), front_(NO_INDEX) {
             geo_debug_assert(list_id < DLIST_NB);
         }
 
         DList(CDTBase2d& cdt) :
-            cdt_(cdt), list_id_(index_t(-1)),
-            back_(index_t(-1)), front_(index_t(-1)) {
+            cdt_(cdt), list_id_(NO_INDEX),
+            back_(NO_INDEX), front_(NO_INDEX) {
         }
 
         void initialize(index_t list_id) {
@@ -10997,7 +10977,7 @@ namespace GEO {
         }
 
         bool initialized() const {
-            return (list_id_ != index_t(-1));
+            return (list_id_ != NO_INDEX);
         }
 
         ~DList() {
@@ -11009,9 +10989,9 @@ namespace GEO {
         bool empty() const {
             geo_debug_assert(initialized());
             geo_debug_assert(
-                (back_==index_t(-1))==(front_==index_t(-1))
+                (back_==NO_INDEX)==(front_==NO_INDEX)
             );
-            return (back_==index_t(-1));
+            return (back_==NO_INDEX);
         }
 
         bool contains(index_t t) const {
@@ -11042,17 +11022,17 @@ namespace GEO {
         }
 
         void clear() {
-            for(index_t t=front_; t!=index_t(-1); t = cdt_.Tnext_[t]) {
+            for(index_t t=front_; t!=NO_INDEX; t = cdt_.Tnext_[t]) {
                 cdt_.Treset_flag(t,list_id_);
             }
-            back_ = index_t(-1);
-            front_ = index_t(-1);
+            back_ = NO_INDEX;
+            front_ = NO_INDEX;
         }
 
         index_t size() const {
             geo_debug_assert(initialized());
             index_t result = 0;
-            for(index_t t=front(); t!=index_t(-1); t = next(t)) {
+            for(index_t t=front(); t!=NO_INDEX; t = next(t)) {
                 ++result;
             }
             return result;
@@ -11065,10 +11045,10 @@ namespace GEO {
             if(empty()) {
                 back_ = t;
                 front_ = t;
-                cdt_.Tnext_[t] = index_t(-1);
-                cdt_.Tprev_[t] = index_t(-1);
+                cdt_.Tnext_[t] = NO_INDEX;
+                cdt_.Tprev_[t] = NO_INDEX;
             } else {
-                cdt_.Tnext_[t] = index_t(-1);
+                cdt_.Tnext_[t] = NO_INDEX;
                 cdt_.Tnext_[back_] = t;
                 cdt_.Tprev_[t] = back_;
                 back_ = t;
@@ -11080,11 +11060,11 @@ namespace GEO {
             geo_debug_assert(!empty());
             index_t t = back_;
             back_ = cdt_.Tprev_[back_];
-            if(back_ == index_t(-1)) {
+            if(back_ == NO_INDEX) {
                 geo_debug_assert(front_ == t);
-                front_ = index_t(-1);
+                front_ = NO_INDEX;
             } else {
-                cdt_.Tnext_[back_] = index_t(-1);
+                cdt_.Tnext_[back_] = NO_INDEX;
             }
             geo_debug_assert(contains(t));
             cdt_.Treset_flag(t,list_id_);
@@ -11098,10 +11078,10 @@ namespace GEO {
             if(empty()) {
                 back_ = t;
                 front_ = t;
-                cdt_.Tnext_[t] = index_t(-1);
-                cdt_.Tprev_[t] = index_t(-1);
+                cdt_.Tnext_[t] = NO_INDEX;
+                cdt_.Tprev_[t] = NO_INDEX;
             } else {
-                cdt_.Tprev_[t] = index_t(-1);
+                cdt_.Tprev_[t] = NO_INDEX;
                 cdt_.Tprev_[front_] = t;
                 cdt_.Tnext_[t] = front_;
                 front_ = t;
@@ -11113,11 +11093,11 @@ namespace GEO {
             geo_debug_assert(!empty());
             index_t t = front_;
             front_ = cdt_.Tnext_[front_];
-            if(front_ == index_t(-1)) {
+            if(front_ == NO_INDEX) {
                 geo_debug_assert(back_ == t);
-                back_ = index_t(-1);
+                back_ = NO_INDEX;
             } else {
-                cdt_.Tprev_[front_] = index_t(-1);
+                cdt_.Tprev_[front_] = NO_INDEX;
             }
             geo_debug_assert(contains(t));
             cdt_.Treset_flag(t,list_id_);
@@ -11151,7 +11131,7 @@ namespace GEO {
             case DLIST_N_ID:
                 out << "N";
                 break;
-            case index_t(-1):
+            case NO_INDEX:
                 out << "<uninitialized list>";
                 break;
             default:
@@ -11159,7 +11139,7 @@ namespace GEO {
                 break;
             }
             out << "=";
-            for(index_t t=front(); t!=index_t(-1); t = next(t)) {
+            for(index_t t=front(); t!=NO_INDEX; t = next(t)) {
                 out << t << ";";
             }
             out << std::endl;
@@ -11200,23 +11180,23 @@ namespace GEO {
         index_t t,
         index_t v1,   index_t v2,   index_t v3,
         index_t adj1, index_t adj2, index_t adj3,
-        index_t e1cnstr = index_t(-1),
-        index_t e2cnstr = index_t(-1),
-        index_t e3cnstr = index_t(-1)
+        index_t e1cnstr = NO_INDEX,
+        index_t e2cnstr = NO_INDEX,
+        index_t e3cnstr = NO_INDEX
     ) {
         geo_debug_assert(t < nT());
         geo_debug_assert(v1 < nv());
         geo_debug_assert(v2 < nv());
         geo_debug_assert(v3 < nv());
-        geo_debug_assert(adj1 < nT() || adj1 == index_t(-1));
-        geo_debug_assert(adj2 < nT() || adj2 == index_t(-1));
-        geo_debug_assert(adj3 < nT() || adj3 == index_t(-1));
+        geo_debug_assert(adj1 < nT() || adj1 == NO_INDEX);
+        geo_debug_assert(adj2 < nT() || adj2 == NO_INDEX);
+        geo_debug_assert(adj3 < nT() || adj3 == NO_INDEX);
         geo_debug_assert(v1 != v2);
         geo_debug_assert(v2 != v3);
         geo_debug_assert(v3 != v1);
-        geo_debug_assert(adj1 != adj2 || adj1 == index_t(-1));
-        geo_debug_assert(adj2 != adj3 || adj2 == index_t(-1));
-        geo_debug_assert(adj3 != adj1 || adj3 == index_t(-1));
+        geo_debug_assert(adj1 != adj2 || adj1 == NO_INDEX);
+        geo_debug_assert(adj2 != adj3 || adj2 == NO_INDEX);
+        geo_debug_assert(adj3 != adj1 || adj3 == NO_INDEX);
         geo_debug_assert(orient2d(v1,v2,v3) != ZERO);
         T_[3*t  ]    = v1;
         T_[3*t+1]    = v2;
@@ -11259,8 +11239,8 @@ namespace GEO {
 
     index_t Topp(index_t t, index_t e=0) const {
         index_t t2 = Tadj(t,e);
-        if(t2 == index_t(-1)) {
-            return index_t(-1);
+        if(t2 == NO_INDEX) {
+            return NO_INDEX;
         }
         index_t e2 = Tadj_find(t2,t);
         return Tv(t2,e2);
@@ -11272,7 +11252,7 @@ namespace GEO {
         geo_debug_assert(t1 < nT());
         geo_debug_assert(le1 < 3);
         index_t t2 = Tadj(t1,le1);
-        if(t2 == index_t(-1)) {
+        if(t2 == NO_INDEX) {
             return;
         }
         index_t le2 = Tadj_find(t2,prev_t2_adj_e2);
@@ -11283,12 +11263,12 @@ namespace GEO {
     index_t Tnew() {
         index_t t = nT();
         index_t nc = (t+1)*3; // new number of corners
-        T_.resize(nc, index_t(-1));
-        Tadj_.resize(nc, index_t(-1));
-        Tecnstr_first_.resize(nc, index_t(-1));
+        T_.resize(nc, NO_INDEX);
+        Tadj_.resize(nc, NO_INDEX);
+        Tecnstr_first_.resize(nc, NO_INDEX);
         Tflags_.resize(t+1,0);
-        Tnext_.resize(t+1,index_t(-1));
-        Tprev_.resize(t+1,index_t(-1));
+        Tnext_.resize(t+1,NO_INDEX);
+        Tprev_.resize(t+1,NO_INDEX);
         return t;
     }
 
@@ -11314,7 +11294,7 @@ namespace GEO {
         // added to the traversed edge).
         for(
             index_t ecit = Tedge_cnstr_first(t,le);
-            ecit != index_t(-1);
+            ecit != NO_INDEX;
             ecit = edge_cnstr_next(ecit)
         ) {
             if(edge_cnstr(ecit) == cnstr_id) {
@@ -11336,7 +11316,7 @@ namespace GEO {
 #endif
         Tadd_edge_cnstr(t, le, cnstr_id);
         index_t t2 = Tadj(t,le);
-        if(t2 != index_t(-1)) {
+        if(t2 != NO_INDEX) {
             index_t le2 = Tadj_find(t2,t);
             // Sanity check: make sure the two edges always share the
             // same constraint list.
@@ -11346,24 +11326,24 @@ namespace GEO {
     }
 
     bool Tedge_is_constrained(index_t t, index_t le) const {
-        return (Tedge_cnstr_first(t,le) != index_t(-1));
+        return (Tedge_cnstr_first(t,le) != NO_INDEX);
     }
 
     void for_each_T_around_v(
         index_t v, std::function<bool(index_t t, index_t lv)> doit
     ) {
         index_t t = vT(v);
-        index_t lv = index_t(-1);
+        index_t lv = NO_INDEX;
         do {
             lv = Tv_find(t,v);
             if(doit(t,lv)) {
                 return;
             }
             t = Tadj(t, (lv+1)%3);
-        } while(t != vT(v) && t != index_t(-1));
+        } while(t != vT(v) && t != NO_INDEX);
 
         // We are done, this was an interior vertex
-        if(t != index_t(-1)) {
+        if(t != NO_INDEX) {
             return;
         }
 
@@ -11373,7 +11353,7 @@ namespace GEO {
         t = vT(v);
         lv = Tv_find(t,v);
         t = Tadj(t, (lv+2)%3);
-        while(t != index_t(-1)) {
+        while(t != NO_INDEX) {
             lv = Tv_find(t,v);
             if(doit(t,lv)) {
                 return;
@@ -11384,7 +11364,7 @@ namespace GEO {
 
 
     index_t locate(
-        index_t v, index_t hint = index_t(-1), Sign* orient = nullptr
+        index_t v, index_t hint = NO_INDEX, Sign* orient = nullptr
     ) const;
 
     bool is_convex_quad(index_t t) const;
@@ -11419,12 +11399,12 @@ namespace GEO {
     
 
     void Tcheck(index_t t) const {
-        if(t == index_t(-1)) {
+        if(t == NO_INDEX) {
             return;
         }
         for(index_t e=0; e<3; ++e) {
             geo_assert(Tv(t,e) != Tv(t,(e+1)%3));
-            if(Tadj(t,e) == index_t(-1)) {
+            if(Tadj(t,e) == NO_INDEX) {
                 continue;
             }
             geo_assert(Tadj(t,e) != Tadj(t,(e+1)%3));
@@ -11501,7 +11481,7 @@ namespace GEO {
     index_t eT(Edge E) {
         index_t v1 = E.first;
         index_t v2 = E.second;
-        index_t result = index_t(-1);
+        index_t result = NO_INDEX;
         for_each_T_around_v(
             v1, [&](index_t t, index_t lv)->bool {
                 if(Tv(t, (lv+1)%3) == v2) {
@@ -11520,7 +11500,7 @@ namespace GEO {
                 return false;
             }
         );
-        geo_debug_assert(result != index_t(-1));
+        geo_debug_assert(result != NO_INDEX);
         geo_debug_assert(
             (Tv(result,1) == v1 && Tv(result,2) == v2) ||
             (Tv(result,1) == v2 && Tv(result,2) == v1)
@@ -11529,7 +11509,7 @@ namespace GEO {
     }
 
     index_t locate_naive(
-        index_t v, index_t hint = index_t(-1), Sign* orient = nullptr
+        index_t v, index_t hint = NO_INDEX, Sign* orient = nullptr
     ) const;
 
     void constrain_edges_naive(
@@ -11587,7 +11567,7 @@ namespace GEO {
             );
         }
 
-        index_t insert(const vec2& p, index_t hint = index_t(-1)) {
+        index_t insert(const vec2& p, index_t hint = NO_INDEX) {
             debug_check_consistency();
             point_.push_back(p);
             index_t v = CDTBase2d::insert(point_.size()-1, hint);
@@ -11640,7 +11620,7 @@ namespace GEO {
         void clear() override;
 
         index_t insert(
-            const ExactPoint& p, index_t id=0, index_t hint = index_t(-1)
+            const ExactPoint& p, index_t id=0, index_t hint = NO_INDEX
         );
 
         void insert_constraint(index_t v1, index_t v2, index_t operand_bits=0) {
@@ -11648,6 +11628,10 @@ namespace GEO {
             cnstr_operand_bits_.push_back(operand_bits);
             CDTBase2d::insert_constraint(v1,v2);
         }
+
+        void create_enclosing_triangle(
+            const ExactPoint& p1, const ExactPoint& p2, const ExactPoint& p3
+        );
 
         void create_enclosing_quad(
             const ExactPoint& p1, const ExactPoint& p2,
@@ -11687,7 +11671,12 @@ namespace GEO {
         void save(const std::string& filename) const override;
 
     protected:
-        void add_point(const ExactPoint& p, index_t id = index_t(-1));
+
+	void classify_triangles_union_cnstr_operand_bits_is_operand_id(
+	    bool mark_only=false
+	);
+
+        void add_point(const ExactPoint& p, index_t id = NO_INDEX);
         void begin_insert_transaction() override;
         void commit_insert_transaction() override;
         void rollback_insert_transaction() override;
@@ -11770,15 +11759,12 @@ namespace GEO {
             double* neighbors_sq_dist
         ) const;
 
-
-        index_t get_nearest_neighbor(
-            const double* query_point
-        ) const {
+        index_t get_nearest_neighbor(const double* query_point) const {
             index_t result;
             double sq_dist;
             get_nearest_neighbors(1, query_point, &result, &sq_dist);
-            geo_assert(signed_index_t(result) >= 0);
-            return index_t(result);
+	    geo_assert(result < nb_points());
+            return result;
         }
 
         coord_index_t dimension() const {
@@ -11896,7 +11882,7 @@ namespace GEO {
                     // Yes, '<=' because we got space for n+1 neigbors
                     // in the work arrays.
                     for(index_t i = 0; i <= nb_neighbors; ++i) {
-                        neighbors[i] = index_t(-1);
+                        neighbors[i] = NO_INDEX;
                         neighbors_sq_dist[i] = Numeric::max_float64();
                     }
                 }
@@ -11938,7 +11924,7 @@ namespace GEO {
                     neighbors[i] = user_neighbors[i];
                     neighbors_sq_dist[i] = user_neighbors_sq_dist[i];
                 }
-                neighbors[nb_neighbors_max] = index_t(-1);
+                neighbors[nb_neighbors_max] = NO_INDEX;
                 neighbors_sq_dist[nb_neighbors_max] = Numeric::max_float64();
                 nb_neighbors = nb_neighbors_max;
             }
